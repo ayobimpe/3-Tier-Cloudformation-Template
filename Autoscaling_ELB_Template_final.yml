@@ -1,0 +1,200 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Metadata: 
+  License: Apache-2.0
+Description: 'AWS CloudFormation Sample Template ELBGuidedAutoScalingRollingUpdates:
+  This example creates an auto scaling group behind a load balancer with a simple
+  health check. The Auto Scaling launch configuration includes an update policy that
+  will keep 2 instances running while doing an autoscaling rolling update. The update
+  will roll forward only when the ELB health check detects an updated instance in-service.
+  **WARNING** This template creates one or more Amazon EC2  instances and an Elastic
+  Load Balancer. You will be billed for the AWS resources used if you create a stack
+  from this template.'
+Parameters:
+  VPC:
+    Type: AWS::EC2::VPC::Id
+  InstanceType:
+    Description: WebServer EC2 instance type
+    Type: String
+    Default: t2.small
+    AllowedValues: [t1.micro, t2.nano, t2.micro, t2.small, t2.medium, t2.large, m1.small]
+    ConstraintDescription: must be a valid EC2 instance type.
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instances
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: must be the name of an existing EC2 KeyPair.
+
+  LoadBalancerSG:
+    Type: AWS::EC2::SecurityGroup::Id
+    ConstraintDescription: must be the name of an existing security group.
+
+  WebServerSG:
+    Type: AWS::EC2::SecurityGroup::Id
+  
+  AppServerSG:
+    Type: AWS::EC2::SecurityGroup::Id
+
+  SSHLocation:
+    Description: The IP address range that can be used to SSH to the EC2 instances
+    Type: String
+    MinLength: '9'
+    MaxLength: '18'
+    Default: 0.0.0.0/0
+    AllowedPattern: (\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+  ImageId:
+    Type: AWS::EC2::Image::Id
+    Default: ami-0b898040803850657
+
+  
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet::Id
+    ConstraintDescription: must be the name of an existing EC2 subnets.
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet::Id
+    ConstraintDescription: must be the name of an existing EC2 subnets.
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet::Id
+    ConstraintDescription: must be the name of an existing EC2 subnets.
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet::Id
+    ConstraintDescription: must be the name of an existing EC2 subnets.
+
+  MaxSizeASG:
+    Description: "Enter the Max Size for the ASG"
+    Type: String
+  MinSizeASG:
+    Description: "Enter the Min Size for the ASG"
+    Type: String
+  DesiredCapacityASG:
+    Description: "Enter the desired capacity for the ASG"
+    Type: String
+  VPCZoneIdentifier:
+   Description: "List the Subnet Ids of the instances"
+   Type: List<AWS::EC2::Subnet::Id>
+  
+Resources:
+  WebLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      AssociatePublicIpAddress: true
+      ImageId: !Ref ImageId
+      InstanceType: !Ref 'InstanceType'
+      LaunchConfigurationName: BimpsLaunchConfiguration1
+      SecurityGroups: [!Ref WebServerSG]
+
+  AppLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      AssociatePublicIpAddress: false
+      ImageId: !Ref ImageId
+      InstanceType: !Ref 'InstanceType'
+      LaunchConfigurationName: BimpsLaunchConfiguration2
+      SecurityGroups: [!Ref AppServerSG]
+
+  AutoScalingGroup1:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: AutoScalingGroup1
+      VPCZoneIdentifier: !Ref VPCZoneIdentifier
+      Cooldown: 120
+      DesiredCapacity: !Ref 'DesiredCapacityASG'
+      LaunchConfigurationName: BimpsLaunchConfiguration1
+      MaxSize: !Ref 'MaxSizeASG'
+      MinSize: !Ref 'MinSizeASG'
+      LoadBalancerNames: [!Ref ElasticLoadBalancer1]
+
+  AutoScalingGroup2:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: AutoScalingGroup2
+      VPCZoneIdentifier: !Ref VPCZoneIdentifier
+      Cooldown: 120
+      DesiredCapacity: !Ref 'DesiredCapacityASG'
+      LaunchConfigurationName: BimpsLaunchConfiguration2
+      MaxSize: !Ref 'MaxSizeASG'
+      MinSize: !Ref 'MinSizeASG'
+      LoadBalancerNames: [!Ref ElasticLoadBalancer2]
+
+
+    
+  ScalingPolicy1:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref AutoScalingGroup1
+      Cooldown: 300
+      PolicyType: SimpleScaling
+      ScalingAdjustment: 1
+
+  ScalingPolicy2:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref AutoScalingGroup2
+      Cooldown: 300
+      PolicyType: SimpleScaling
+      ScalingAdjustment: 1
+      
+
+  ElasticLoadBalancer1:
+    Type: AWS::ElasticLoadBalancing::LoadBalancer
+    Properties:
+      CrossZone: 'true'
+      Listeners:
+      - LoadBalancerPort: '80'
+        InstancePort: '80'
+        Protocol: HTTP
+      HealthCheck:
+        Target: HTTP:80/index.html
+        HealthyThreshold: '3'
+        UnhealthyThreshold: '5'
+        Interval: '30'
+        Timeout: '5'
+      Scheme: internet-facing
+      SecurityGroups: [!Ref LoadBalancerSG]
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+
+  ElasticLoadBalancer2:
+    Type: AWS::ElasticLoadBalancing::LoadBalancer
+    Properties:
+      CrossZone: 'true'
+      Listeners:
+      - LoadBalancerPort: '80'
+        InstancePort: '80'
+        Protocol: HTTP
+      HealthCheck:
+        Target: HTTP:80/index.html
+        HealthyThreshold: '3'
+        UnhealthyThreshold: '5'
+        Interval: '30'
+        Timeout: '5'
+      Scheme: internet-facing
+      SecurityGroups: [!Ref LoadBalancerSG]
+      Subnets:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+  
+Outputs:
+  AutoScalingGroup1:
+    Description: "The newly created asg"
+    Value: !Ref AutoScalingGroup1
+  AutoScalingGroup2:
+    Description: "The newly created asg"
+    Value: !Ref AutoScalingGroup2
+  WebLaunchConfiguration:
+    Description: "the newly created launch config"
+    Value: !Ref WebLaunchConfiguration
+  AppLaunchConfiguration:
+    Description: "the newly created launch config"
+    Value: !Ref AppLaunchConfiguration 
+  ImageId:
+    Value: !Ref ImageId
+
+    
+   
